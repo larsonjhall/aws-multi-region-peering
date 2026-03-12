@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AI Photo Labeler</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+    #drop-zone { border: 2px dashed #aaa; border-radius: 8px; padding: 40px;
+                 text-align: center; cursor: pointer; margin-bottom: 20px; }
+    #drop-zone.dragover { background: #f0f8ff; border-color: #007bff; }
+    .result-card { border: 1px solid #ddd; border-radius: 8px; padding: 16px;
+                   margin-bottom: 16px; }
+    .label-tag { display: inline-block; background: #007bff; color: white;
+                 padding: 4px 10px; border-radius: 20px; margin: 4px; font-size: 14px; }
+    #status { color: #555; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h1>🔍 AI Photo Labeler</h1>
+  <div id="drop-zone">
+    <p>Drag & drop an image here, or click to select</p>
+    <input type="file" id="file-input" accept="image/*" style="display:none" />
+  </div>
+  <div id="status"></div>
+  <h2>Labeled Photos</h2>
+  <div id="results"></div>
+
+  <script>
+    const API_URL = "https://9l35dhl911.execute-api.us-east-1.amazonaws.com/"; // e.g. https://abc123.execute-api.us-east-1.amazonaws.com
+
+    const dropZone = document.getElementById("drop-zone");
+    const fileInput = document.getElementById("file-input");
+    const status = document.getElementById("status");
+
+    dropZone.onclick = () => fileInput.click();
+    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add("dragover"); };
+    dropZone.ondragleave = () => dropZone.classList.remove("dragover");
+    dropZone.ondrop = (e) => { e.preventDefault(); dropZone.classList.remove("dragover"); handleFile(e.dataTransfer.files[0]); };
+    fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+    async function handleFile(file) {
+      if (!file) return;
+      status.textContent = "Uploading...";
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target.result.split(",")[1];
+        const res = await fetch(`${API_URL}/upload`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: base64, filename: file.name, contentType: file.type }),
+        });
+        const data = await res.json();
+        status.textContent = "Uploaded! Analyzing (may take a few seconds)...";
+        setTimeout(loadLabels, 4000);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    async function loadLabels() {
+      const res = await fetch(`${API_URL}/labels`);
+      const items = await res.json();
+      const container = document.getElementById("results");
+      container.innerHTML = items.map(item => `
+        <div class="result-card">
+          <strong>${item.imageKey.split("/").pop()}</strong>
+          <small style="color:#888"> — ${new Date(item.timestamp).toLocaleString()}</small>
+          <br/><br/>
+          ${item.labels.map(l => `<span class="label-tag">${l.name} ${l.confidence}%</span>`).join("")}
+          <details style="margin-top:10px"><summary>Raw JSON</summary>
+            <pre>${JSON.stringify(item, null, 2)}</pre>
+          </details>
+        </div>`).join("");
+      status.textContent = "";
+    }
+
+    loadLabels();
+  </script>
+</body>
+</html>
